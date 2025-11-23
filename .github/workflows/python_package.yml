@@ -1,6 +1,6 @@
 name: python_package
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
   build:
@@ -26,7 +26,7 @@ jobs:
         with:
           # Semantic version range syntax or exact version of a Python version
           #'3.x'
-          python-version: ${{ matrix.python }}
+          python-version: ${{ matrix.python-version }}
           cache: 'pip'
           # Optional - x64 or x86 architecture, defaults to x64
           architecture: 'x64'
@@ -39,13 +39,38 @@ jobs:
       - run: |
           python -m pip install --upgrade pip setuptools wheel
           pip install -r requirements.txt || pip install pytest
-          
+
+      - name: Prepare junit dir
+        run: mkdir -p junit
+        
       - run: pip test       
 
+      # - name: Test with pytest
+      #   # produce junit xml at junit/test-results-<pyver>.xml
+      #   run: |
+      #     pip install pytest 
+      #     pytest tests --doctest-modules --junitxml=junit/test-results.xml 
+
       - name: Test with pytest
+        # produce junit xml at junit/test-results-<pyver>.xml
         run: |
-          pip install pytest 
-          pytest tests.py --doctest-modules --junitxml=junit/test-results.xml 
+          pytest tests -q --junitxml=junit/test-results-${{ matrix.python-version }}.xml
+        # allow tests to fail the step (they will), but we still want to upload artifacts afterwards
+
+      - name: Show files (debug)
+        run: |
+          echo "Contents of repo root:"
+          ls -la
+          echo "Contents of junit/:"
+          ls -la junit || true
+          
+      - name: Upload pytest test results
+        uses: actions/upload-artifact@v4
+        # Use always() to always run this step to publish test results 
+        if: ${{ always() }}        # ensure upload runs even if pytest failed
+        with:
+          name: pytest-results-${{ matrix.python-version }}
+          path: junit/test-results-${{ matrix.python-version }}.xml
 
       - name: Install the code linting and formatting tool Ruff
           run: pipx install ruff
@@ -63,11 +88,3 @@ jobs:
       - name: Run tox
         # Run tox using the version of Python in `PATH`
         run: tox -e py
-
-      - name: Upload pytest test results
-        uses: actions/upload-artifact@v4
-        with:
-          name: pytest-results-${{ matrix.python-version }}
-          path: junit/test-results-${{ matrix.python-version }}.xml
-        # Use always() to always run this step to publish test results when there are test failures
-        if: ${{ always() }}
